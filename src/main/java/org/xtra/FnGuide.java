@@ -1,3 +1,5 @@
+package org.xtra;
+
 import org.apache.logging.log4j.Level;
 import org.apache.poi.ss.usermodel.*;
 import org.json.JSONObject;
@@ -78,7 +80,7 @@ public class FnGuide extends ExcelFile {
                     Map.entry(TITLE_CAPITAL, "CAPITAL"),
                     Map.entry(TITLE_SALES, "SALES"),
                     Map.entry(TITLE_QUARTERLY_SALES, "QUARTERLY_SALES"))),
-            Map.entry("금용", Map.ofEntries(
+            Map.entry("금융", Map.ofEntries(
                     Map.entry(TITLE_CURRENT_LIABILITIES, "CURRENT_LIABILITIES"),
                     Map.entry(TITLE_ASSETS, "SALES"),
                     Map.entry(TITLE_CURRENT_PROFIT, "INCOME"),
@@ -93,7 +95,7 @@ public class FnGuide extends ExcelFile {
                     Map.entry(TITLE_NON_CURRENT_LIABILITIES, "NON_CURRENT_LIABILITIES"),
                     Map.entry(TITLE_LIABILITIES, "LIABILITIES"),
                     Map.entry(TITLE_CAPITAL, "CAPITAL"))),
-            Map.entry("금용(연결)", Map.ofEntries(
+            Map.entry("금융(연결)", Map.ofEntries(
                     Map.entry(TITLE_CURRENT_LIABILITIES, "CURRENT_LIABILITIES"),
                     Map.entry("(당기순이익귀속)\n지배기업주주지분", "INCOME"),
                     Map.entry(TITLE_FINANCIAL_CONST, "FINANCIAL_COST"),
@@ -161,19 +163,36 @@ public class FnGuide extends ExcelFile {
             String industryCode = this.getCellToString(row, FnGuide.INDUSTRY_INDEX);
             String categories = this.getCellToString(row, FnGuide.CATEGORY_INDEX);
 
-            this.logger.log(Level.DEBUG, "{} : {}, {}, {}, {}", row.getRowNum(), itemCode, name, industryCode, categories);
+            //this.logger.log(Level.DEBUG, "{} : {}, {}, {}, {}", row.getRowNum(), itemCode, name, industryCode, categories);
             return  new Company( market, itemCode, name, industryCode, categories);
         });
 
         row.forEach(cell -> {
-            if (FnGuide.START_OF_DATA_INDEX <= cell.getColumnIndex() && header.containsKey(cell.getColumnIndex()) && cell.getCellType() == CellType.NUMERIC) {
-                String[] fields = header.get(cell.getColumnIndex()).split("-");
+            if (this.currentSheet.getSheetName().equals("금융(연결)") && company.getCode().equals("A000370")) {
+                this.logger.log(Level.DEBUG, "{}", company);
+            }
+            if (((this.currentSheet.getSheetName().equals("금융(연결)") && (FnGuide.START_OF_DATA_INDEX - 1<= cell.getColumnIndex()))
+                || (!this.currentSheet.getSheetName().equals("금융(연결)") && FnGuide.START_OF_DATA_INDEX <= cell.getColumnIndex()))
+                && this.header.containsKey(cell.getColumnIndex())) {
+                if (company.getCode().equals("A000370")) {
+                    this.logger.log(Level.DEBUG, "{}", company);
+                }
+                String[] fields = this.header.get(cell.getColumnIndex()).split("-");
                 if (Pattern.compile("\\d+/누적", Pattern.CANON_EQ).matcher(fields[1]).matches()) {
                     fields[1] = fields[1].substring(0,6);
                 }
                 try {
-                    company.setAccount(fields[0], fields[1], (long) cell.getNumericCellValue());
-                } catch (InvalidAttributeValueException ignore) {}
+                    long value = 0;
+                    if (cell.getCellType() == CellType.NUMERIC) {
+                        value = (long)cell.getNumericCellValue();
+                    } else {
+                        value = (long)Double.parseDouble(cell.getStringCellValue());
+
+                    }
+
+                    company.setAccount(fields[0], fields[1], value);
+                } catch (InvalidAttributeValueException | NumberFormatException ignore) {
+                }
             }
         });
     }
@@ -197,30 +216,41 @@ public class FnGuide extends ExcelFile {
             return Collections.emptyMap();
         }
 
+        if (sheet.getSheetName().equals("금융") || sheet.getSheetName().equals("금융(연결)")) {
+            System.out.println("Hello");
+        }
+
         Row quarterRow = sheet.getRow(fieldRow.getRowNum() + 1);
 
         fieldRow.forEach(cell -> {
             String quarter;
-            if (quarterRow.getCell(cell.getColumnIndex()).getCellType() == CellType.NUMERIC) {
-                quarter = String.valueOf((long) quarterRow.getCell(cell.getColumnIndex()).getNumericCellValue());
-            } else {
-                quarter = quarterRow.getCell(cell.getColumnIndex()).getStringCellValue();
-            }
-
-
-            if (FnGuide.accountMapper.containsKey(sheet.getSheetName())
-                    && FnGuide.accountMapper.get(sheet.getSheetName()).containsKey(cell.toString())) {
-                String title = FnGuide.accountMapper.get(sheet.getSheetName()).get(cell.toString());
-                if (quarter.length() != 0) {
-                    title += "-" + quarter;
+            try {
+                if (quarterRow.getCell(cell.getColumnIndex()).getCellType() == CellType.NUMERIC) {
+                    quarter = String.valueOf((long) quarterRow.getCell(cell.getColumnIndex()).getNumericCellValue());
+                } else {
+                    quarter = quarterRow.getCell(cell.getColumnIndex()).getStringCellValue();
                 }
 
-                titles.put(cell.getColumnIndex(), title);
-                this.logger.log(Level.DEBUG, "{} : {}", cell.getCellType(), title);
+                if (FnGuide.accountMapper.containsKey(sheet.getSheetName())) {
+                    if (FnGuide.accountMapper.get(sheet.getSheetName()).containsKey(cell.toString())) {
+                        String title = FnGuide.accountMapper.get(sheet.getSheetName()).get(cell.toString());
+                        if (quarter.length() != 0) {
+                            title += "-" + quarter;
+                        }
+
+                        titles.put(cell.getColumnIndex(), title);
+                        this.logger.log(Level.DEBUG, "{} : {}", cell.getCellType(), title);
+                    }
+                } else {
+                    System.out.println("Account Not exist : " + sheet.getSheetName());
+                }
+            } catch(NullPointerException | NumberFormatException e) {
+                System.out.println(e);
             }
+
         });
 
-        System.out.println(titles);
+        //System.out.println(titles);
         return  titles;
     }
 

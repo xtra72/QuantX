@@ -1,3 +1,4 @@
+package org.xtra;
 
 import java.io.FileOutputStream;
 import java.io.FileWriter;
@@ -25,6 +26,7 @@ public class FullCatalog extends ExcelFile {
         private final int firstCol;
         private final int lastCol;
         private final CellType type;
+
         public HeaderField(String name, int firstRow, int lastRow, int firstCol, int lastCol, CellType type) {
             this.name = name;
             this.firstRow = firstRow;
@@ -93,8 +95,8 @@ public class FullCatalog extends ExcelFile {
     public static final String TITLE_QUARTERLY_SALES = "SALES/4";
     public static final String TITLE_RATING = "등급";
     public static final String TITLE_ROE = "ROE";
-    public static final String TITLE_SALES = "SALES";
-    public static final String TITLE_SALES2 = "매출";
+    public static final String TITLE_YEARLY_SALES = "SALES";
+    public static final String TITLE_SALES = "매출";
     public static final String TITLE_STOCK = "발행주식수";
 
     public static final String ITEM_ASSETS = "ASSETS";
@@ -109,6 +111,7 @@ public class FullCatalog extends ExcelFile {
     public static final String ITEM_QUARTERLY_INCOME= "QUARTERLY_INCOME";
     public static final String ITEM_RATING = "RATING";
     public static final String ITEM_ROE = "ROE";
+    public static final String ITEM_YEARLY_SALES = "YEAR_SALES";
     public static final String ITEM_SALES = "SALES";
     public static final String ITEM_STOCK = "STOCK";
 
@@ -130,8 +133,8 @@ public class FullCatalog extends ExcelFile {
             Map.entry(TITLE_QUARTERLY_SALES, ITEM_QUARTERLY_SALES),
             Map.entry(TITLE_RATING, ITEM_RATING),
             Map.entry(TITLE_ROE, ITEM_ROE),
-            Map.entry(TITLE_SALES, ITEM_SALES),
-            Map.entry(TITLE_SALES2, ITEM_SALES)
+            Map.entry(TITLE_YEARLY_SALES, ITEM_SALES),
+            Map.entry(TITLE_SALES, ITEM_SALES)
     );
 
     private static final HeaderField[] headerFields = {
@@ -155,7 +158,11 @@ public class FullCatalog extends ExcelFile {
 
     private final Map<String, Company>    companies;
 
-    private final String[] acceptedAccounts = {ITEM_RATING, ITEM_ROE, ITEM_SALES, ITEM_PBR, ITEM_QUARTERLY_ROE, ITEM_QUARTERLY_SALES, ITEM_MARKET_CAPITALIZATION};
+    private final String[] acceptedAccounts = {ITEM_RATING, ITEM_ROE, ITEM_YEARLY_SALES, ITEM_PBR,
+        ITEM_QUARTERLY_ROE, ITEM_QUARTERLY_SALES, ITEM_MARKET_CAPITALIZATION,
+        ITEM_INCOME, ITEM_CAPITAL, ITEM_SALES};
+
+    private final long defaultUnit = 1000;
 
     public FullCatalog(Map<String, Company> companies) {
         this.companies = companies;
@@ -190,7 +197,8 @@ public class FullCatalog extends ExcelFile {
         header2.forEach(cell -> {
             String title = this.toString(cell);
             if ((titles2[cell.getColumnIndex()].equals(TITLE_QUARTERLY_ROE)
-                    || titles2[cell.getColumnIndex()].equals(TITLE_QUARTERLY_SALES))
+                    || titles2[cell.getColumnIndex()].equals(TITLE_QUARTERLY_SALES)
+                    || titles2[cell.getColumnIndex()].equals(TITLE_RATING))
                     && (title.length() == 0)) {
                 titles3[cell.getColumnIndex()] = titles3[cell.getColumnIndex() - 1];
             } else {
@@ -203,28 +211,36 @@ public class FullCatalog extends ExcelFile {
         header3.forEach(cell -> titles4[cell.getColumnIndex()] = this.toString(cell));
 
         for(int i = 0 ; i < titles2.length ; i++) {
-            String title = titles2[i];
-            String quarter = "";
-
-            if (titles3[i] != null) {
-                quarter += titles3[i];
-            }
-
-            if (titles4[i] != null) {
-                quarter += titles4[i];
-            }
-
-            if (quarter.length() != 0) {
-                if (title.matches("\\d+")) {
-                    title = FullCatalog.accountMapper.getOrDefault(quarter, quarter) + "-" + title;
-                } else {
-                    title  = FullCatalog.accountMapper.getOrDefault(title, title) + "-" + quarter;
-                }
+            if (titles2[i].matches("[0-9]+")) {
+                titles.put(i, FullCatalog.accountMapper.get(titles4[i]) + "-" + titles2[i]);
             } else {
-                title  = FullCatalog.accountMapper.getOrDefault(title, title);
-            }
+                String title = titles2[i];
+                String quarter = "";
 
-            titles.put(i, title);
+                if (titles3[i] != null) {
+                    quarter += titles3[i];
+                }
+
+                if (titles4[i] != null) {
+                    if (titles4[i].length() == 1) {
+                        quarter += "0" + titles4[i];
+                    } else {
+                        quarter += titles4[i];
+                    }
+                }
+
+                if (quarter.length() != 0) {
+                    if (title.matches("\\d+")) {
+                        title = FullCatalog.accountMapper.getOrDefault(quarter, quarter) + "-" + title;
+                    } else {
+                        title = FullCatalog.accountMapper.getOrDefault(title, title) + "-" + quarter;
+                    }
+                } else {
+                    title = FullCatalog.accountMapper.getOrDefault(title, title);
+                }
+
+                titles.put(i, title);
+            }
         }
 
         return  titles;
@@ -262,9 +278,6 @@ public class FullCatalog extends ExcelFile {
             this.companies.put(itemCode, company);
         }
 
-        if (itemCode.equals("A000060")) {
-            System.out.println("메리츠화재");
-        }
         company.setComment(dataRow.getComment());
 
         row.forEach(cell -> {
@@ -274,9 +287,20 @@ public class FullCatalog extends ExcelFile {
                     try {
                         switch (fields[0]) {
                             case ITEM_SALES:
-                            case ITEM_QUARTERLY_SALES: {
+                            case ITEM_INCOME:
+                            case ITEM_CAPITAL: {
                                 if (!company.hasAccount(fields[0], Long.parseLong(fields[1]))) {
                                     Long sales = this.toLong(cell);
+                                    if (sales != null)
+                                        company.setAccount(fields[0], fields[1], sales);
+                                }
+                            }
+                            break;
+
+                            case ITEM_YEARLY_SALES:
+                            case ITEM_QUARTERLY_SALES: {
+                                if (!company.hasAccount(fields[0], Long.parseLong(fields[1]))) {
+                                    Long sales = toDefaultUnit(this.toLong(cell));
                                     if (sales != null)
                                         company.setAccount(fields[0], fields[1], sales);
                                 }
@@ -322,9 +346,6 @@ public class FullCatalog extends ExcelFile {
                             default: {
                                 Long value = this.toLong(cell);
                                 if (value != null) {
-                                    if (itemCode.equals("A000060")) {
-                                        System.out.println(fields[1] + " : " + fields[0] + " = " + value);
-                                    }
                                     company.setAccount(fields[1], fields[0], value);
                                 }
                             }
@@ -343,57 +364,54 @@ public class FullCatalog extends ExcelFile {
 
     public void calculate() {
         this.companies.forEach((code, company)->{
-            List<Long> quarters = company.getQuarterlies().stream().sorted().collect(Collectors.toList());
-            quarters.forEach(quarter -> {
-                try {
-                    Finance finance = company.getFinance(quarter / 100, quarter % 100);
-
-                    if (quarter % 100 == 1) {
-                        if (!finance.hasAccount(ITEM_QUARTERLY_SALES) && finance.hasAccount(ITEM_SALES)) {
-                            finance.setAccount(ITEM_QUARTERLY_SALES, (long) finance.getAccount(ITEM_SALES));
-                        }
-
-                        if (!finance.hasAccount(ITEM_QUARTERLY_INCOME) && finance.hasAccount(ITEM_INCOME)) {
-                            finance.setAccount(ITEM_QUARTERLY_INCOME, (long) finance.getAccount(ITEM_INCOME));
-                        }
-
-
-                    } else {
-                        long previousQuarterly = quarter - 1;
-                        if (previousQuarterly % 10 == 0) {
-                            previousQuarterly -= 97;
-                        }
-
-                        Finance previousFinance = company.getFinance(previousQuarterly / 100, previousQuarterly % 100);
-
-                        if (!finance.hasAccount(ITEM_QUARTERLY_SALES)) {
-                            long sales = (long) finance.getAccount(ITEM_SALES);
-                            if (quarter % 100 != 1) {
-                                sales -= (long) previousFinance.getAccount(ITEM_SALES);
-                            }
-                            finance.setAccount(ITEM_QUARTERLY_SALES, sales);
-                        }
-
-                        long income = (long) finance.getAccount(ITEM_INCOME);
-                        if (quarter % 100 != 1) {
-                            income -= (long) previousFinance.getAccount(ITEM_INCOME);
-                        }
-                        finance.setAccount(ITEM_QUARTERLY_INCOME, income);
-                    }
-
-                    if (!finance.hasAccount(ITEM_QUARTERLY_ROE)) {
-                        if ((Long)finance.getAccount(ITEM_QUARTERLY_INCOME) < 0L && (Long)finance.getAccount(ITEM_CAPITAL) < 0L) {
-                            finance.setAccount(ITEM_QUARTERLY_ROE, 0);
-                        } else {
-                            finance.setAccount(ITEM_QUARTERLY_ROE,
-                                ((Long) finance.getAccount(ITEM_QUARTERLY_INCOME) * 1.0 / (Long) finance.getAccount(ITEM_CAPITAL)));
-                        }
-                    }
-
-                } catch (NullPointerException e) {
-                    this.logger.log(Level.WARN, e);
-                }
-            });
+            company.calculate();
+//
+//            List<Long> quarters = company.getQuarterlies().stream().sorted().collect(Collectors.toList());
+//            quarters.forEach(quarter -> {
+//                try {
+//                    Finance finance = company.getFinance(quarter / 100, quarter % 100);
+//
+//                    if ((quarter % 100 / 3) == 1) {
+//                        if (!finance.hasAccount(ITEM_QUARTERLY_SALES) && finance.hasAccount(ITEM_SALES)) {
+//                            finance.setAccount(ITEM_QUARTERLY_SALES, (long) finance.getAccount(ITEM_SALES) / 100000);
+//                        }
+//
+//                        if (!finance.hasAccount(ITEM_QUARTERLY_INCOME) && finance.hasAccount(ITEM_INCOME)) {
+//                            finance.setAccount(ITEM_QUARTERLY_INCOME, (long) finance.getAccount(ITEM_INCOME));
+//                        }
+//
+//
+//                    } else {
+//                        long previousQuarterly = quarter - 3;
+//
+//                        Finance previousFinance = company.getFinance(previousQuarterly / 100, previousQuarterly % 100);
+//
+//                        if (!finance.hasAccount(ITEM_QUARTERLY_SALES)) {
+//                            long sales = (long) finance.getAccount(ITEM_SALES);
+//                            sales -= (long) previousFinance.getAccount(ITEM_SALES);
+//                            finance.setAccount(ITEM_QUARTERLY_SALES, sales / 100000);
+//                        }
+//
+//                        if (!finance.hasAccount(ITEM_QUARTERLY_INCOME)) {
+//                            long income = (long) finance.getAccount(ITEM_INCOME);
+//                            income -= (long) previousFinance.getAccount(ITEM_INCOME);
+//                            finance.setAccount(ITEM_QUARTERLY_INCOME, income);
+//                        }
+//                    }
+//
+//                    if (!finance.hasAccount(ITEM_QUARTERLY_ROE)) {
+//                        if ((Long)finance.getAccount(ITEM_QUARTERLY_INCOME) < 0L && (Long)finance.getAccount(ITEM_CAPITAL) < 0L) {
+//                            finance.setAccount(ITEM_QUARTERLY_ROE, 0.0D);
+//                        } else {
+//                            finance.setAccount(ITEM_QUARTERLY_ROE,
+//                                ((Long) finance.getAccount(ITEM_QUARTERLY_INCOME) * 1.0 / (Long) finance.getAccount(ITEM_CAPITAL)));
+//                        }
+//                    }
+//
+//                } catch (NullPointerException e) {
+//                    this.logger.log(Level.WARN, e);
+//                }
+//            });
         });
     }
 
@@ -552,7 +570,7 @@ public class FullCatalog extends ExcelFile {
             this.createQuarterlyColumns(xSheet, TITLE_RATING, 0, xSheet.getRow(0).getLastCellNum(), years);
             this.createYearlyColumns(xSheet, TITLE_ROE, 0, xSheet.getRow(0).getLastCellNum(), years);
             this.createColumn(xSheet, TITLE_PBR, 0, 3, xSheet.getRow(0).getLastCellNum(), 1);
-            this.createYearlyColumns(xSheet, TITLE_SALES, 0, xSheet.getRow(0).getLastCellNum(), years);
+            this.createYearlyColumns(xSheet, TITLE_YEARLY_SALES, 0, xSheet.getRow(0).getLastCellNum(), years);
             this.createQuarterlyColumns(xSheet, TITLE_QUARTERLY_ROE, 0, xSheet.getRow(0).getLastCellNum(), years);
             this.createQuarterlyColumns(xSheet, TITLE_QUARTERLY_SALES, 0, xSheet.getRow(0).getLastCellNum(), years);
             this.createColumn(xSheet, TITLE_MARKET_CAPITALIZATION, 0, 3, xSheet.getRow(0).getLastCellNum(), 1);
@@ -568,7 +586,7 @@ public class FullCatalog extends ExcelFile {
                         header[1].createCell(header[1].getLastCellNum(), CellType.STRING).setCellValue(quarter);
                         header[1].createCell(header[1].getLastCellNum(), CellType.STRING).setCellValue(quarter);
                         header[1].createCell(header[1].getLastCellNum(), CellType.STRING).setCellValue(quarter);
-                        header[2].createCell(header[2].getLastCellNum(), CellType.STRING).setCellValue(TITLE_SALES2);
+                        header[2].createCell(header[2].getLastCellNum(), CellType.STRING).setCellValue(TITLE_SALES);
                         header[2].createCell(header[2].getLastCellNum(), CellType.STRING).setCellValue(TITLE_INCOME);
                         header[2].createCell(header[2].getLastCellNum(), CellType.STRING).setCellValue(TITLE_CAPITAL);
                     });
@@ -652,7 +670,7 @@ public class FullCatalog extends ExcelFile {
 
                     AtomicReference<Long> sum = new AtomicReference<>((long) 0);
                     quarterSales.forEach(quarter -> sum.updateAndGet(v -> (v + (long) values.get(quarter))));
-                    cell.setCellValue(sum.get());
+                    cell.setCellValue(toHundredMillionUnit(sum.get()));
                 }
             }
         }
@@ -664,7 +682,11 @@ public class FullCatalog extends ExcelFile {
             Cell cell = xRow.createCell(xRow.getLastCellNum(), CellType.NUMERIC);
             Double roe = null;
             try {
-                roe = (Double) company.getAccount(ITEM_ROE, year);
+                if (year < 2020) {
+                    roe = (Double) company.getAccount(ITEM_ROE, year);
+                } else {
+                    throw new NullPointerException();
+                }
             } catch(NullPointerException ignore) {
                 Map<Long, Object> values = company.getValues(ITEM_QUARTERLY_ROE, year * 100 + 12, (year - 1) * 100 + 6);
                 if (values.size() >= 4) {
@@ -673,7 +695,7 @@ public class FullCatalog extends ExcelFile {
                             .stream()
                             .sorted(Comparator.reverseOrder())
                             .limit(4)
-                            .forEach(quarter-> sum.updateAndGet(v -> (v + (Double) values.get(quarter))));
+                            .forEach(quarter-> sum.updateAndGet(v -> (v + (double) values.get(quarter))));
 
                     roe = sum.get();
                 }
@@ -698,7 +720,7 @@ public class FullCatalog extends ExcelFile {
 
     public void addMarketCapitalization(XRow xRow, Company company) {
         Cell cell = xRow.createCell(xRow.getLastCellNum(), CellType.NUMERIC);
-        cell.setCellValue(company.getMarketCapitalization());
+        cell.setCellValue(toHundredMillionUnit(company.getMarketCapitalization()));
         cell.setCellStyle(xRow.getXSheet().getXWorkbook().getCellStyle(CELL_STYLE_CURRENCY));
     }
 
@@ -725,7 +747,7 @@ public class FullCatalog extends ExcelFile {
             fullQuarterlies.stream().sorted(Comparator.reverseOrder()).forEach(quarter -> {
                 Cell cell = xRow.createCell(xRow.getLastCellNum(), CellType.NUMERIC);
                 if (company.hasAccount(ITEM_QUARTERLY_SALES, quarter)) {
-                    cell.setCellValue((long) company.getAccount(ITEM_QUARTERLY_SALES, quarter));
+                    cell.setCellValue(toHundredMillionUnit((long) company.getAccount(ITEM_QUARTERLY_SALES, quarter)));
                     cell.setCellStyle(xRow.getXSheet().getXWorkbook().getCellStyle(CELL_STYLE_CURRENCY));
                 }
                 ;
@@ -758,6 +780,14 @@ public class FullCatalog extends ExcelFile {
                         xRow.createCell(xRow.getLastCellNum(), CellType.NUMERIC).setCellValue(0);
                     }
                 });
+    }
+
+    public long toHundredMillionUnit(long value) {
+        return  value / 100000;
+    }
+
+    public long toDefaultUnit(long value) {
+        return  value * 100000;
     }
 
     public JSONObject toJson() {

@@ -1,3 +1,5 @@
+package org.xtra;
+
 import org.json.JSONObject;
 
 import javax.management.InvalidAttributeValueException;
@@ -5,6 +7,21 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 class Company {
+    public static final String ITEM_ASSETS = "ASSETS";
+    public static final String ITEM_CAPITAL = "CAPITAL";
+//    public static final String ITEM_COMMENT = "COMMENT";
+    public static final String ITEM_INCOME = "INCOME";
+//    public static final String ITEM_LIABILITIES = "LIABILITIES";
+//    public static final String ITEM_MARKET_CAPITALIZATION = "MARKET_CAPITALIZATION";
+//    public static final String ITEM_PBR = "PBR";
+    public static final String ITEM_QUARTERLY_ROE = "QUARTERLY_ROE";
+    public static final String ITEM_QUARTERLY_SALES = "QUARTERLY_SALES";
+    public static final String ITEM_QUARTERLY_INCOME= "QUARTERLY_INCOME";
+//    public static final String ITEM_RATING = "RATING";
+//    public static final String ITEM_ROE = "ROE";
+    public static final String ITEM_SALES = "SALES";
+//    public static final String ITEM_STOCK = "STOCK";
+
     private final String code;
     private       String name;
     private final String industryCode;
@@ -67,7 +84,7 @@ class Company {
     public double getPbr() { return this.pbr; }
     public void setPbr(double pbr) { this.pbr = pbr; }
 
-    public double getMarketCapitalization() { return this.marketCapitalization; }
+    public long getMarketCapitalization() { return this.marketCapitalization; }
     public void setMarketCapitalization(long marketCapitalization) { this.marketCapitalization = marketCapitalization; }
 
     public Map<Long, Finance> getQuarterlyFinancial() {
@@ -130,6 +147,10 @@ class Company {
         return  values;
     }
 
+    public Finance getFinance(Long quarter) throws NullPointerException {
+        return  getFinance(quarter / 100, quarter % 100);
+    }
+
     public Finance getFinance(Long year, Long quarter) throws NullPointerException {
         Long key = year*100 + quarter;
         if (this.quarterlyFinancial.containsKey(key)) {
@@ -157,12 +178,12 @@ class Company {
     public Object getAccount(String title, Long session) {
         if (session > 9999) {
             if (this.quarterlyFinancial.containsKey(session)) {
-                return ((Finance) this.quarterlyFinancial.get(session)).getAccount(title);
+                return (this.quarterlyFinancial.get(session)).getAccount(title);
             }
         }
         else {
-            if (this.quarterlyFinancial.containsKey(session)) {
-                return ((Finance) this.quarterlyFinancial.get(session)).getAccount(title);
+            if (this.yearlyFinancial.containsKey(session)) {
+                return (this.yearlyFinancial.get(session)).getAccount(title);
             }
         }
 
@@ -218,6 +239,60 @@ class Company {
         }
     }
 
+    public void calculate() {
+        List<Long> quarters = getQuarterlies().stream().sorted().collect(Collectors.toList());
+        quarters.forEach(quarter -> {
+            try {
+                Finance finance = getFinance(quarter / 100, quarter % 100);
+
+                if ((quarter % 100 / 3) == 1) {
+                    if (!finance.hasAccount(ITEM_QUARTERLY_SALES) && finance.hasAccount(ITEM_SALES)) {
+                        finance.setAccount(ITEM_QUARTERLY_SALES, finance.getAccount(ITEM_SALES));
+                    }
+
+                    if (!finance.hasAccount(ITEM_QUARTERLY_INCOME) && finance.hasAccount(ITEM_INCOME)) {
+                        finance.setAccount(ITEM_QUARTERLY_INCOME, finance.getAccount(ITEM_INCOME));
+                    }
+
+
+                } else {
+                    long previousQuarterly = quarter - 3;
+
+                    Finance previousFinance = getFinance(previousQuarterly / 100, previousQuarterly % 100);
+
+                    if (!finance.hasAccount(ITEM_QUARTERLY_SALES)) {
+                        long sales = (long) finance.getAccount(ITEM_SALES);
+                        sales -= (long) previousFinance.getAccount(ITEM_SALES);
+                        finance.setAccount(ITEM_QUARTERLY_SALES, sales);
+                    }
+
+                    if (!finance.hasAccount(ITEM_QUARTERLY_INCOME)) {
+                        long income = (long) finance.getAccount(ITEM_INCOME);
+                        income -= (long) previousFinance.getAccount(ITEM_INCOME);
+                        finance.setAccount(ITEM_QUARTERLY_INCOME, income);
+                    }
+                }
+
+                if (!finance.hasAccount(ITEM_QUARTERLY_ROE)) {
+                    if ((Long)finance.getAccount(ITEM_QUARTERLY_INCOME) < 0L && (Long)finance.getAccount(ITEM_CAPITAL) < 0L) {
+                        finance.setAccount(ITEM_QUARTERLY_ROE, 0.0D);
+                    } else {
+                        finance.setAccount(ITEM_QUARTERLY_ROE,
+                            ((Long) finance.getAccount(ITEM_QUARTERLY_INCOME) * 1.0 / (Long) finance.getAccount(ITEM_CAPITAL)));
+                    }
+                }
+
+            } catch (NullPointerException ignore) {
+            }
+        });
+
+        try {
+            Finance finance = getFinance(getLastQuarterly());
+            pbr = marketCapitalization / ((double) finance.getAccount(ITEM_ASSETS));
+        } catch (Exception ignore) {
+        }
+
+    }
 
     public JSONObject toJson() {
         JSONObject root = new JSONObject();

@@ -1,3 +1,5 @@
+package org.xtra;
+
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
@@ -5,13 +7,13 @@ import java.io.OutputStream;
 import java.util.*;
 
 import org.apache.logging.log4j.Level;
+import org.apache.logging.log4j.LogManager;
 import org.apache.poi.ss.usermodel.*;
 
 import org.apache.poi.ss.util.CellRangeAddress;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 
 import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.LogManager;
 
 public abstract class ExcelFile {
 
@@ -19,7 +21,6 @@ public abstract class ExcelFile {
         Workbook workbook;
         Map<String, CellStyle>  cellStyles;
         Map<String, Font>  fonts;
-        //DataFormat dataFormat;
         Map<String, Short> dataFormats;
         List<XSheet> sheets;
 
@@ -31,7 +32,6 @@ public abstract class ExcelFile {
             this.workbook = workbook;
             this.cellStyles = new HashMap<>();
             this.fonts = new HashMap<>();
-            //this.dataFormat = workbook.createDataFormat();
             this.dataFormats = new HashMap<>();
             this.sheets = new ArrayList<>();
         }
@@ -170,21 +170,23 @@ public abstract class ExcelFile {
             return  this.row.getLastCellNum();
         }
     }
-    protected final Logger logger = LogManager.getLogger();
+    protected final Logger logger;
     Map<Integer, String> header;
+    Sheet      currentSheet;
 
     ExcelFile() {
         this.header = new HashMap<>();
+        this.logger = LogManager.getLogger();
     }
     public void load(String path) {
         try(FileInputStream inStream = new FileInputStream(path)) {
             Workbook workbook = new XSSFWorkbook(inStream) ;
 
             for(int page = 0 ; page < workbook.getNumberOfSheets() ; page++) {
-                Sheet sheet = workbook.getSheetAt(page);
-                this.logger.log(Level.DEBUG, "Load page : {}", sheet.getSheetName());
+                this.currentSheet = workbook.getSheetAt(page);
+                this.logger.log(Level.DEBUG, "Load page : {}", this.currentSheet.getSheetName());
 
-                this.load(sheet);
+                this.load(this.currentSheet);
             }
         } catch (FileNotFoundException e) {
             this.logger.log(Level.ERROR, "File not found : {}", path);
@@ -230,20 +232,30 @@ public abstract class ExcelFile {
     protected Integer toInteger(Cell cell) {
         if (cell.getCellType() == CellType.NUMERIC) {
             return  (int)cell.getNumericCellValue();
-        } else if ((cell.getStringCellValue().length() != 0) && (cell.getStringCellValue().equals("N/A"))) {
-            return (int)Double.parseDouble(cell.getStringCellValue());
-        } else {
-            return  null;
+        } else if ((cell.getStringCellValue().length() != 0) && (!cell.getStringCellValue().equals("N/A"))) {
+            return (int)Double.parseDouble(cell.getStringCellValue().replace(",", ""));
         }
+
+       return  null;
     }
 
     protected Long toLong(Cell cell) {
         if (cell.getCellType() == CellType.NUMERIC) {
             return  (long)cell.getNumericCellValue();
-        } else if ((cell.getStringCellValue().length() != 0) && (cell.getStringCellValue().equals("N/A"))) {
-            return (long)Double.parseDouble(cell.getStringCellValue());
-        } else {
-            return  null;
+        } else if ((cell.getStringCellValue().length() != 0) && (!cell.getStringCellValue().equals("N/A"))) {
+            return (long) Double.parseDouble(cell.getStringCellValue().replace(",", ""));
         }
+
+        return  null;
+    }
+
+    protected Double toDouble(Cell cell) {
+        if (cell.getCellType() == CellType.NUMERIC) {
+            return  cell.getNumericCellValue();
+        } else if ((cell.getStringCellValue().length() != 0) && (!cell.getStringCellValue().equals("N/A"))) {
+            return Double.parseDouble(cell.getStringCellValue().replace(",",""));
+        }
+
+        return  null;
     }
 }
